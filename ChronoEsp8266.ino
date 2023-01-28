@@ -1,14 +1,12 @@
 #include "config.h"
 #include <ESPAsyncWebServer.h>
-// #include <ESP8266WebServer.h>
-// #include <ESP8266WiFi.h>
 
 #include <AsyncElegantOTA.h>
+#include <WebSerial.h>
 
 #include <DNSServer.h>
 
 #include <Arduino_JSON.h>
-#include <WebSerial.h>
 
 //serverSettings
 const byte DNS_PORT = 53;
@@ -19,7 +17,21 @@ AsyncWebServer webServer(80);
 
 String getData();
 
-//server
+//for debug purposes(unsigned long int prints)
+void bigPrint(uint64_t n){
+  unsigned char temp;
+  String result=""; //Start with a blank string
+  if(n==0){WebSerial.println(0);return;} //Catch the zero case
+  while(n){
+    temp = n % 10;
+    result=String(temp)+result; //Add this digit to the left of the string
+    n=(n-temp)/10;      
+    }//while
+    WebSerial.println(result);
+  }
+
+
+//server code
 const char responseHTML[] PROGMEM = R"rawliteral(<!DOCTYPE html> 
 <html> 
 <head>
@@ -195,7 +207,6 @@ public:
   virtual ~CaptiveRequestHandler() {}
 
   bool canHandle(AsyncWebServerRequest *request) {
-    //request->addInterestingHeader("ANY");
     return true;
   }
 
@@ -224,21 +235,29 @@ bool bbPassedSensor=true;
 
 void calculate() {
   unsigned long int microDif=0;
-  microDif = lp - fp-5700;// 5700 is an software overhead
+  microDif = lp - fp;
   metric = (SENSOR_DISTANCE / 1000.0) / (microDif / 1000000.0);  //mm->m us->s
   joules = (((BB_WEIGHT / 1000.0) / 2) * (metric * metric));
-  fp = 0;
-  lp = 0;
+  
   WebSerial.println("Measurments");
   WebSerial.println(metric);
   WebSerial.println(joules);
+  WebSerial.println("Time of detection:");
+  WebSerial.print("Sensor1:");
+  bigPrint(fp);
+  WebSerial.print("Sensor2:");
+  bigPrint(lp);
+
+  fp = 0;
+  lp = 0;
 }
 
 void IRAM_ATTR getSensor1(){
   //getSpeedValue
-  if(firstSensorTrigger==false) {
-  fp=ESP.getCycleCount()/160;
-  firstSensorTrigger=true;
+  if(firstSensorTrigger==false) 
+  {
+    fp=ESP.getCycleCount()/160;
+    firstSensorTrigger=true;
   }
   //makeRpsCalculation
   if (startedRpsCounting == false && bbPassedSensor == true) {
@@ -283,8 +302,6 @@ String getData() {
   data["sens1"] = digitalRead(PT1);
   data["sens2"] = digitalRead(PT2);
   String text = JSON.stringify(data);
-  // WebSerial.println(text);
-  // webServer.send(200, "text/html", text);
   return text;
 }
 
@@ -301,16 +318,8 @@ void setup() {
   dnsServer.start(DNS_PORT, "*", apIP);
   webServer.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
 
-  // webServer.on("/data", getData);
-
-  // webServer.on("/", getIndexPage);
-
-
-  // webServer.onNotFound([]() {
-  //   webServer.send(200, "text/html", responseHTML);
-  // });
-
   webServer.begin();
+
   attachInterrupt(digitalPinToInterrupt(PT1), getSensor1, FALLING);
   attachInterrupt(digitalPinToInterrupt(PT2), getSensor2, FALLING);
 }
